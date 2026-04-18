@@ -2,9 +2,14 @@
 setlocal enabledelayedexpansion
 
 echo =================================================
-echo   [>>] Xpllc-Code Windows Auto-Installer
+echo   [>>] Xpllc-Code Windows Auto-Installer v5.0
 echo   Groq + OpenRouter + Modal Multi-Provider Edition
+echo   Coding-Optimized + Groq-404-Hardened
 echo =================================================
+echo   v5.0 fixes:
+echo    - Removed bad default model IDs that frequently 404
+echo      (groq/compound, llama-4-scout, gpt-oss-120b)
+echo    - Added post-install model verification step
 echo.
 echo   Let's get your settings first!
 echo =================================================
@@ -60,33 +65,28 @@ echo.
 if "!PROVIDER!"=="groq" (
     echo   Available Groq Models:
     echo   -----------------------------------------
-    echo   -- Meta Llama --
-    echo   1^) llama-3.1-8b-instant              (560 T/s, 131K ctx^)
-    echo   2^) llama-3.3-70b-versatile            (280 T/s, 131K ctx^)
-    echo   3^) meta-llama/llama-4-scout-17b-16e-instruct (750 T/s, vision^)
+    echo   -- Meta Llama (RECOMMENDED for coding) --
+    echo   1^) llama-3.3-70b-versatile            (280 T/s, 131K ctx, top pick^)
+    echo   2^) llama-3.1-8b-instant              (560 T/s, 131K ctx, fast^)
+    echo   -- Qwen (strong coder models) --
+    echo   3^) qwen/qwen3-32b                     (400 T/s, 131K ctx^)
     echo   -- OpenAI OSS --
-    echo   4^) openai/gpt-oss-120b                (500 T/s, 131K ctx^)
-    echo   5^) openai/gpt-oss-20b                 (1000 T/s, 131K ctx^)
-    echo   -- Qwen --
-    echo   6^) qwen/qwen3-32b                     (400 T/s, 131K ctx^)
-    echo   -- Compound Systems --
-    echo   7^) groq/compound                      (450 T/s, built-in tools^)
-    echo   8^) groq/compound-mini                  (450 T/s, built-in tools^)
+    echo   4^) openai/gpt-oss-20b                 (1000 T/s, 131K ctx^)
     echo   -----------------------------------------
-    echo   9^) Custom Model ID
+    echo   5^) Custom Model ID
     echo.
-    set /p MODEL_CHOICE="Choose a number (Default: 2 - llama-3.3-70b): "
-    if "!MODEL_CHOICE!"=="" set MODEL_CHOICE=2
+    echo   [NOTE] 'groq/compound', 'llama-4-scout' and 'gpt-oss-120b' were
+    echo          removed because they frequently return HTTP 404 on
+    echo          /chat/completions. If you need them, enter via Custom.
+    echo.
+    set /p MODEL_CHOICE="Choose a number (Default: 1 - llama-3.3-70b^): "
+    if "!MODEL_CHOICE!"=="" set MODEL_CHOICE=1
 
-    if "!MODEL_CHOICE!"=="1" set MODEL_NAME=llama-3.1-8b-instant
-    if "!MODEL_CHOICE!"=="2" set MODEL_NAME=llama-3.3-70b-versatile
-    if "!MODEL_CHOICE!"=="3" set MODEL_NAME=meta-llama/llama-4-scout-17b-16e-instruct
-    if "!MODEL_CHOICE!"=="4" set MODEL_NAME=openai/gpt-oss-120b
-    if "!MODEL_CHOICE!"=="5" set MODEL_NAME=openai/gpt-oss-20b
-    if "!MODEL_CHOICE!"=="6" set MODEL_NAME=qwen/qwen3-32b
-    if "!MODEL_CHOICE!"=="7" set MODEL_NAME=groq/compound
-    if "!MODEL_CHOICE!"=="8" set MODEL_NAME=groq/compound-mini
-    if "!MODEL_CHOICE!"=="9" (
+    if "!MODEL_CHOICE!"=="1" set MODEL_NAME=llama-3.3-70b-versatile
+    if "!MODEL_CHOICE!"=="2" set MODEL_NAME=llama-3.1-8b-instant
+    if "!MODEL_CHOICE!"=="3" set MODEL_NAME=qwen/qwen3-32b
+    if "!MODEL_CHOICE!"=="4" set MODEL_NAME=openai/gpt-oss-20b
+    if "!MODEL_CHOICE!"=="5" (
         echo.
         echo   Enter any model ID from https://console.groq.com/docs/models
         set /p MODEL_NAME="Enter custom model ID: "
@@ -94,25 +94,21 @@ if "!PROVIDER!"=="groq" (
 ) else if "!PROVIDER!"=="modal" (
     echo   Available Modal Models (deploy these via vLLM/SGLang^):
     echo   -----------------------------------------
-    echo   1^) google/gemma-4-26B-A4B-it             (Fast MoE, vision^)
-    echo   2^) meta-llama/Llama-3.3-70B-Instruct      (Strong general purpose^)
-    echo   3^) meta-llama/Llama-3.1-8B-Instruct       (Fast and lightweight^)
+    echo   1^) meta-llama/Llama-3.3-70B-Instruct       (Strong general purpose^)
+    echo   2^) meta-llama/Llama-3.1-8B-Instruct        (Fast and lightweight^)
+    echo   3^) Qwen/Qwen2.5-Coder-32B-Instruct         (Optimized for coding^)
     echo   4^) mistralai/Mistral-Small-24B-Instruct-2501 (Efficient^)
-    echo   5^) Qwen/Qwen3-32B                         (Multilingual^)
-    echo   6^) openai/gpt-oss-120b                     (Large OSS model^)
     echo   -----------------------------------------
-    echo   7^) Custom Model ID
+    echo   5^) Custom Model ID
     echo.
-    set /p MODEL_CHOICE="Choose a number (Default: 1 - gemma-4^): "
+    set /p MODEL_CHOICE="Choose a number (Default: 1 - Llama-3.3-70B^): "
     if "!MODEL_CHOICE!"=="" set MODEL_CHOICE=1
 
-    if "!MODEL_CHOICE!"=="1" set MODEL_NAME=google/gemma-4-26B-A4B-it
-    if "!MODEL_CHOICE!"=="2" set MODEL_NAME=meta-llama/Llama-3.3-70B-Instruct
-    if "!MODEL_CHOICE!"=="3" set MODEL_NAME=meta-llama/Llama-3.1-8B-Instruct
+    if "!MODEL_CHOICE!"=="1" set MODEL_NAME=meta-llama/Llama-3.3-70B-Instruct
+    if "!MODEL_CHOICE!"=="2" set MODEL_NAME=meta-llama/Llama-3.1-8B-Instruct
+    if "!MODEL_CHOICE!"=="3" set MODEL_NAME=Qwen/Qwen2.5-Coder-32B-Instruct
     if "!MODEL_CHOICE!"=="4" set MODEL_NAME=mistralai/Mistral-Small-24B-Instruct-2501
-    if "!MODEL_CHOICE!"=="5" set MODEL_NAME=Qwen/Qwen3-32B
-    if "!MODEL_CHOICE!"=="6" set MODEL_NAME=openai/gpt-oss-120b
-    if "!MODEL_CHOICE!"=="7" (
+    if "!MODEL_CHOICE!"=="5" (
         echo.
         echo   Enter the HuggingFace model ID you deployed on Modal
         set /p MODEL_NAME="Enter custom model ID: "
@@ -164,9 +160,16 @@ echo set OPENAI_API_KEY=%API_KEY%
 echo set OPENAI_BASE_URL=!API_BASE!
 echo set OPENAI_MODEL=!MODEL_NAME!
 echo set ANTHROPIC_API_KEY=
-echo echo Booting Xpllc-Code with !MODEL_NAME! via !PROVIDER!...
+echo echo Booting Xpllc-Code v5.0 with !MODEL_NAME! via !PROVIDER!...
 echo npx openclaude %%*
 ) > start.bat
+
+:: Post-install Groq model verification (the real fix for Groq 404 reports)
+if "!PROVIDER!"=="groq" (
+    echo.
+    echo Verifying model against /chat/completions...
+    powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'https://api.groq.com/openai/v1/chat/completions' -Method POST -Headers @{ 'Authorization' = 'Bearer !API_KEY!'; 'Content-Type' = 'application/json' } -Body '{\"model\":\"!MODEL_NAME!\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}' -TimeoutSec 15; Write-Host '[OK] Model !MODEL_NAME! is servable.' -ForegroundColor Green } catch { Write-Host ('[WARN] Verification failed: ' + $_.Exception.Message) -ForegroundColor Yellow; Write-Host '      If you see HTTP 404, the model ID is decommissioned.' -ForegroundColor Yellow; Write-Host '      Re-run this installer and pick llama-3.3-70b-versatile.' -ForegroundColor Yellow }"
+)
 
 echo.
 echo =================================================

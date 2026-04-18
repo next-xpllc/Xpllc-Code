@@ -134,7 +134,20 @@ $projectDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 adb push "$projectDir\termux_setup.sh" /sdcard/Download/termux_setup.sh
 adb push "$projectDir\scripts\mobile_tools.sh" /sdcard/Download/mobile_tools.sh
 adb push "$projectDir\scripts\setup_shizuku.sh" /sdcard/Download/setup_shizuku.sh
-Write-Host "  OK All scripts pushed to /sdcard/Download/" -ForegroundColor Green
+
+# v5.0: push skills library and CLAUDE.md so the Termux installer can
+# copy them into ~/.openclaude/skills/ during setup.
+if (Test-Path "$projectDir\CLAUDE.md") {
+    adb push "$projectDir\CLAUDE.md" /sdcard/Download/CLAUDE.md | Out-Null
+}
+if (Test-Path "$projectDir\skills") {
+    adb shell "mkdir -p /sdcard/Download/xpllc_skills" | Out-Null
+    Get-ChildItem -Path "$projectDir\skills" -Recurse -File | ForEach-Object {
+        $rel = $_.FullName.Substring($projectDir.Length + 1) -replace '\\', '/'
+        adb push "$($_.FullName)" "/sdcard/Download/xpllc_$rel" | Out-Null
+    }
+}
+Write-Host "  OK All scripts + skills pushed to /sdcard/Download/" -ForegroundColor Green
 
 # -- Step 6: Create bootstrap script --
 Write-Host ""

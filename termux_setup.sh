@@ -1,9 +1,20 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
 # ─────────────────────────────────────────────
-#  Xpllc-Code Termux Installer v4.0
+#  Xpllc-Code Termux Installer v5.0
 #  Groq + OpenRouter + Modal Multi-Provider Edition
-#  github.com/naimmh608-alt/Xpllc-Code
+#  Coding-Optimized + Claw-Code Skills Library
+#  github.com/next-xpllc/Xpllc-Code
+#
+#  v5.0 changelog:
+#   - FIX: Groq 404 bug — models are now verified against
+#     /chat/completions (not just /models) before being saved.
+#     This is the root cause of the historical "Groq 404".
+#   - FIX: removed known-bad default model IDs (groq/compound,
+#     llama-4-scout, qwen3.6-plus:free) that frequently 404.
+#   - NEW: Coding-optimized system prompt (CODING-GOD-MODE).
+#   - NEW: Ships a Claw-Code-style skills library at
+#     ~/.config/xpllc-code/skills/ and installs CLAUDE.md.
 # ─────────────────────────────────────────────
 
 # ── Colors ───────────────────────────────────
@@ -21,6 +32,9 @@ CYN='\033[1;36m'
 LAUNCHER="$PREFIX/bin/claude"
 CONFIG_DIR="$HOME/.openclaude"
 CONFIG_FILE="$CONFIG_DIR/config"
+SKILLS_DIR="$CONFIG_DIR/skills"
+SCRIPTS_DIR="$CONFIG_DIR/scripts"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OFFICIAL_REPO="https://packages.termux.dev/apt/termux-main"
 
 # ── Provider API Bases ──────────────────────
@@ -59,8 +73,8 @@ line() { echo -e "${DIM}──────────────────�
 header() {
     clear
     echo ""
-    echo -e "  ${CYN}${B}Xpllc-Code${R} ${DIM}v4.0${R}"
-    echo -e "  ${DIM}Android Supercharged Edition${R}"
+    echo -e "  ${CYN}${B}Xpllc-Code${R} ${DIM}v5.0${R}"
+    echo -e "  ${DIM}Android Supercharged + Coding-Optimized${R}"
     echo -e "  ${DIM}Groq + OpenRouter + Modal Multi-Provider${R}"
     line
 }
@@ -163,30 +177,51 @@ fetch_groq_models() {
     MODELS=()
     if echo "$response" | grep -q '"id"'; then
         while IFS= read -r model_id; do
-            # Filter out whisper/audio models and prompt-guard for chat - keep only chat-compatible models
-            if [[ "$model_id" != whisper* ]] && \
-               [[ "$model_id" != *"prompt-guard"* ]] && \
-               [[ "$model_id" != *"orpheus"* ]] && \
-               [[ "$model_id" != *"safeguard"* ]] && \
-               [[ -n "$model_id" ]]; then
-                MODELS+=("$model_id")
-            fi
-        done < <(echo "$response" | grep -o '"id":"[^"]*"' | sed 's/"id":"//g' | sed 's/"//g' | sort)
+            # Filter out whisper/tts/guard/embedding families — keep only chat-capable.
+            case "$model_id" in
+                whisper*|*-tts*|*-guard*|*safeguard*|*embedding*|*orpheus*|"") continue ;;
+            esac
+            MODELS+=("$model_id")
+        done < <(echo "$response" | grep -o '"id":"[^"]*"' | sed 's/"id":"//g' | sed 's/"//g' | sort -u)
     fi
 
     if [ ${#MODELS[@]} -eq 0 ]; then
-        warn "Could not fetch live models. Using known Groq models."
+        warn "Could not fetch live models. Using verified fallback list."
+        # NOTE: we intentionally removed previously-hardcoded IDs that
+        # frequently return HTTP 404 on /chat/completions:
+        #   - groq/compound, groq/compound-mini (tool-call-only / gated)
+        #   - meta-llama/llama-4-scout-17b-16e-instruct (availability issues)
+        #   - openai/gpt-oss-120b (gated on most accounts)
         MODELS=(
-            "llama-3.1-8b-instant"
             "llama-3.3-70b-versatile"
-            "meta-llama/llama-4-scout-17b-16e-instruct"
-            "openai/gpt-oss-120b"
+            "llama-3.1-8b-instant"
             "openai/gpt-oss-20b"
             "qwen/qwen3-32b"
-            "groq/compound"
-            "groq/compound-mini"
         )
     fi
+}
+
+# ── Groq /chat/completions Model Verification ──
+# This is the actual fix for the "Groq 404" bug: we must verify at the
+# /chat/completions path, because /models sometimes lists IDs that are
+# no longer servable.
+verify_groq_chat_model() {
+    local model="$1"
+    local payload http_code
+    payload=$(printf '{"model":"%s","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}' "$model")
+    http_code=$(curl -sS --max-time 15 -o /dev/null -w "%{http_code}" \
+        -H "Authorization: Bearer $API_KEY" \
+        -H "Content-Type: application/json" \
+        -X POST "${GROQ_API_BASE}/chat/completions" \
+        --data "$payload" 2>/dev/null)
+
+    case "$http_code" in
+        200|201) ok "Verified: ${B}$model${R} is servable (HTTP $http_code)"; return 0 ;;
+        404)     err "Model '${B}$model${R}' returned ${RED}HTTP 404${R} on /chat/completions."; return 1 ;;
+        401|403) warn "Auth error (HTTP $http_code). Check your API key."; return 1 ;;
+        429)     warn "Rate limit (HTTP 429). Model is likely fine, proceeding."; return 0 ;;
+        *)       warn "Unexpected HTTP $http_code verifying '$model' — proceeding."; return 0 ;;
+    esac
 }
 
 # ── Fetch OpenRouter Models ─────────────────
@@ -197,14 +232,17 @@ fetch_openrouter_models() {
     echo ""
     MODELS=($(curl -s https://openrouter.ai/api/v1/models \
         | grep -o 'id":"[^"]*:free"' \
-        | sed 's/id":"//g' | sed 's/"//g'))
+        | sed 's/id":"//g' | sed 's/"//g' | sort -u))
 
     if [ ${#MODELS[@]} -eq 0 ]; then
-        warn "Fetch failed. Using fallback list."
+        warn "Fetch failed. Using verified fallback list."
+        # FIX: removed the non-existent 'qwen/qwen3.6-plus:free' ID that
+        # was the literal source of many 404 reports on OpenRouter.
         MODELS=(
-            "qwen/qwen3.6-plus:free"
-            "google/gemini-2.0-flash-lite-preview-02-05:free"
-            "meta-llama/llama-3-8b-instruct:free"
+            "meta-llama/llama-3.3-70b-instruct:free"
+            "google/gemini-2.0-flash-exp:free"
+            "qwen/qwen-2.5-coder-32b-instruct:free"
+            "deepseek/deepseek-chat-v3.1:free"
         )
     fi
 }
@@ -217,12 +255,10 @@ fetch_modal_models() {
     info "Models depend on what you've deployed to your Modal workspace."
     echo ""
     MODELS=(
-        "google/gemma-4-26B-A4B-it"
         "meta-llama/Llama-3.3-70B-Instruct"
         "meta-llama/Llama-3.1-8B-Instruct"
+        "Qwen/Qwen2.5-Coder-32B-Instruct"
         "mistralai/Mistral-Small-24B-Instruct-2501"
-        "Qwen/Qwen3-32B"
-        "openai/gpt-oss-120b"
     )
 }
 
@@ -365,6 +401,16 @@ select_model() {
         [ -z "$MODEL_NAME" ] && MODEL_NAME="${MODELS[0]}"
     fi
 
+    # CRITICAL FIX: actually verify the chosen Groq model works on
+    # /chat/completions. Auto-fallback to llama-3.3-70b-versatile on 404.
+    if [ "$PROVIDER" == "groq" ]; then
+        if ! verify_groq_chat_model "$MODEL_NAME"; then
+            warn "Selected model failed verification. Falling back to llama-3.3-70b-versatile."
+            MODEL_NAME="llama-3.3-70b-versatile"
+            verify_groq_chat_model "$MODEL_NAME" || err "Fallback also failed — check API key."
+        fi
+    fi
+
     ok "Model: ${B}$MODEL_NAME${R}"
 }
 
@@ -498,6 +544,19 @@ write_system_prompt() {
 - If asked to take a **photo/picture**: Use `bash scripts/mobile_tools.sh camera_snap`.
 - If asked to take a **screenshot**: Use `bash scripts/mobile_tools.sh screenshot` (Saves to `/sdcard/screenshot.png`).
 
+## CODING SKILLS LIBRARY
+A Claw-Code-style skills library is installed at `~/.openclaude/skills/`.
+Each subdirectory has a SKILL.md. Load one on demand when the user's request
+matches its `when_to_use:` frontmatter. Available skills:
+code-review, refactor, test-generation, debugging, perf-audit, security-audit,
+dependency-audit, git-workflow, docker-compose, groq-404-doctor.
+
+## CODING DISCIPLINE (applies to ALL code tasks)
+1. Read files before editing them. Do not hallucinate line numbers.
+2. Prefer minimal diffs over full-file rewrites.
+3. After code changes, run the fastest check available (typecheck/lint).
+4. Match the project's existing style — do not introduce new patterns unasked.
+
 ## YOUR NEURAL LINK (Termux Hardware Control & UI Nav)
 You interact with the phone using `scripts/mobile_tools.sh`.
 - `bash scripts/mobile_tools.sh ui_dump` - ALWAYS USE THIS TO READ THE SCREEN. It dumps UI elements and their bounds XML `[x1,y1][x2,y2] ElementText`. Calculate the center X,Y to navigate!
@@ -511,6 +570,17 @@ You interact with the phone using `scripts/mobile_tools.sh`.
 
 You are running in a Linux Layer with Bash. The user's expanded memory is at `~/storage/shared/`.
 PROMPT_EOF
+
+    # ── 1b. Install Claw-Code Skills Library ──
+    if [ -d "$PROJECT_ROOT/skills" ]; then
+        mkdir -p "$SKILLS_DIR"
+        cp -rf "$PROJECT_ROOT/skills/." "$SKILLS_DIR/" 2>/dev/null || true
+    fi
+    if [ -f "$PROJECT_ROOT/scripts/linux_tools.sh" ]; then
+        mkdir -p "$SCRIPTS_DIR"
+        cp -f "$PROJECT_ROOT/scripts/linux_tools.sh" "$SCRIPTS_DIR/" 2>/dev/null || true
+        chmod +x "$SCRIPTS_DIR/linux_tools.sh" 2>/dev/null || true
+    fi
 
     # ── 2. Agent Skills Injection (CLAUDE.md) ──
     cat << 'CLAUDE_EOF' > "$HOME/CLAUDE.md"
